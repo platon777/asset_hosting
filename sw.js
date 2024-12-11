@@ -1,13 +1,13 @@
-// Nom du cache
-const CACHE_NAME = 'dynamic-cache-v7';
+// Nom du cache dynamique (changer le numéro pour forcer une mise à jour globale)
+const CACHE_NAME = 'dynamic-cache-v6';
 
 // Installation du Service Worker
 self.addEventListener('install', (event) => {
   console.log('Service Worker installé');
-  self.skipWaiting(); // Active immédiatement le SW après l'installation
+  self.skipWaiting(); // Active immédiatement le SW
 });
 
-// Activation du Service Worker
+// Activation du Service Worker (supprime les anciens caches)
 self.addEventListener('activate', (event) => {
   console.log('Service Worker activé');
   event.waitUntil(
@@ -22,39 +22,35 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
+  self.clients.claim(); // Prend immédiatement le contrôle des clients
 });
 
-// Interception des requêtes avec stratégie "Cache First"
+// Gestion des requêtes réseau avec vérification explicite
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        console.log('Retour depuis le cache pour :', event.request.url);
-        return cachedResponse; // Retourne la ressource depuis le cache
-      }
-
-      // Si la ressource n'est pas dans le cache, elle est récupérée depuis le réseau
-      return fetch(event.request)
-        .then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-            return networkResponse;
-          }
-
-          // Ajout de la ressource au cache pour les futures requêtes
-          const responseClone = networkResponse.clone();
+    fetch(event.request) // Toujours essayer de récupérer la ressource depuis le réseau
+      .then((networkResponse) => {
+        if (
+          networkResponse &&
+          networkResponse.status === 200 &&
+          networkResponse.type === 'basic'
+        ) {
+          // Si la réponse est valide, mettre à jour le cache
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
+            cache.put(event.request, networkResponse.clone());
+            console.log('Mise à jour forcée du cache pour :', event.request.url);
           });
-
-          return networkResponse; // Retourne la réponse réseau
-        })
-        .catch((error) => {
-          console.error('Erreur réseau pour :', event.request.url, error);
-          // Optionnel : Ajout d'un fallback (page hors ligne ou ressource de remplacement)
-          if (event.request.destination === 'document') {
-            return caches.match('/offline.html'); // Assurez-vous que cette page existe dans le cache
+        }
+        return networkResponse; // Retourne toujours la réponse réseau
+      })
+      .catch(() => {
+        // Si le réseau est indisponible, retourner la ressource en cache
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            console.log('Retour depuis le cache pour :', event.request.url);
+            return cachedResponse;
           }
         });
-    })
+      })
   );
 });
