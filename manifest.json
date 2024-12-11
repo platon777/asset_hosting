@@ -1,0 +1,11 @@
+{
+  "name": "BSO Portal",
+  "short_name": "BSO",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#ffff34",
+  "theme_color": "#000000",
+  "description": "Portail pour BSO",
+  "icons": [
+  ]
+}
