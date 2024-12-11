@@ -1,10 +1,10 @@
 // Nom du cache
-const CACHE_NAME = 'dynamic-cache-v1';
+const CACHE_NAME = 'dynamic-cache-v4';
 
 // Installation du Service Worker
 self.addEventListener('install', (event) => {
   console.log('Service Worker installé');
-  self.skipWaiting(); // Active immédiatement le SW
+  self.skipWaiting(); // Activer immédiatement le SW
 });
 
 // Activation du Service Worker
@@ -15,7 +15,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cache) => {
           if (cache !== CACHE_NAME) {
-            console.log('Ancien cache supprimé : ', cache);
+            console.log('Suppression de l’ancien cache :', cache);
             return caches.delete(cache);
           }
         })
@@ -24,33 +24,26 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Interception des requêtes réseau et mise en cache dynamique
+// Interception des requêtes réseau avec stratégie "Network First"
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      if (response) {
-        // Retourne la réponse depuis le cache si elle existe
-        return response;
-      }
-
-      // Sinon, récupère la ressource depuis le réseau
-      return fetch(event.request)
-        .then((networkResponse) => {
-          // Met en cache la nouvelle ressource
-          return caches.open(CACHE_NAME).then((cache) => {
-            // Évitez de mettre en cache les requêtes autres que GET
-            if (event.request.method === 'GET') {
-              cache.put(event.request, networkResponse.clone());
-            }
-            return networkResponse;
-          });
-        })
-        .catch(() => {
-          // Gestion des erreurs (par exemple : afficher une page hors ligne)
-          if (event.request.destination === 'document') {
-            return caches.match('/offline.html'); // Ajouter une page d'erreur au cache si nécessaire
-          }
+    fetch(event.request)
+      .then((networkResponse) => {
+        // Si le réseau répond, mettez à jour le cache
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, networkResponse.clone());
         });
-    })
+        return networkResponse; // Retourne la réponse réseau
+      })
+      .catch(() => {
+        // Si le réseau échoue, retourne le cache
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            console.log('Retour du cache pour :', event.request.url);
+            return cachedResponse;
+          }
+          console.error('Ressource non trouvée dans le cache et réseau indisponible :', event.request.url);
+        });
+      })
   );
 });
