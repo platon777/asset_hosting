@@ -1,10 +1,10 @@
 // Nom du cache
-const CACHE_NAME = 'dynamic-cache-v4';
+const CACHE_NAME = 'dynamic-cache-v5';
 
 // Installation du Service Worker
 self.addEventListener('install', (event) => {
   console.log('Service Worker installé');
-  self.skipWaiting(); // Activer immédiatement le SW
+  self.skipWaiting(); // Active immédiatement le SW après l'installation
 });
 
 // Activation du Service Worker
@@ -24,26 +24,37 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Interception des requêtes réseau avec stratégie "Network First"
+// Interception des requêtes avec stratégie "Cache First"
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        // Si le réseau répond, mettez à jour le cache
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, networkResponse.clone());
-        });
-        return networkResponse; // Retourne la réponse réseau
-      })
-      .catch(() => {
-        // Si le réseau échoue, retourne le cache
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            console.log('Retour du cache pour :', event.request.url);
-            return cachedResponse;
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        console.log('Retour depuis le cache pour :', event.request.url);
+        return cachedResponse; // Retourne la ressource depuis le cache
+      }
+
+      // Si la ressource n'est pas dans le cache, elle est récupérée depuis le réseau
+      return fetch(event.request)
+        .then((networkResponse) => {
+          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+            return networkResponse;
           }
-          console.error('Ressource non trouvée dans le cache et réseau indisponible :', event.request.url);
+
+          // Ajout de la ressource au cache pour les futures requêtes
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
+
+          return networkResponse; // Retourne la réponse réseau
+        })
+        .catch((error) => {
+          console.error('Erreur réseau pour :', event.request.url, error);
+          // Optionnel : Ajout d'un fallback (page hors ligne ou ressource de remplacement)
+          if (event.request.destination === 'document') {
+            return caches.match('/offline.html'); // Assurez-vous que cette page existe dans le cache
+          }
         });
-      })
+    })
   );
 });
