@@ -1,10 +1,10 @@
-// Nom du cache dynamique (changer le numéro pour forcer une mise à jour globale)
-const CACHE_NAME = 'dynamic-cache-v8';
+// Nom du cache (changer la version pour forcer une mise à jour)
+const CACHE_NAME = 'dynamic-cache-v9';
 
 // Installation du Service Worker
 self.addEventListener('install', (event) => {
   console.log('Service Worker installé');
-  self.skipWaiting(); // Active immédiatement le SW
+  self.skipWaiting(); // Active immédiatement le Service Worker
 });
 
 // Activation du Service Worker (supprime les anciens caches)
@@ -13,55 +13,27 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Suppression de l'ancien cache :', cacheName);
-            return caches.delete(cacheName);
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            console.log('Suppression de l’ancien cache :', cache);
+            return caches.delete(cache);
           }
         })
       );
     })
   );
-  self.clients.claim(); // Prend immédiatement le contrôle des clients
+  self.clients.claim(); // Prend immédiatement le contrôle des pages
 });
 
-// Gestion des requêtes réseau avec vérification explicite
+// Gestion des requêtes réseau avec stratégie "Cache First"
 self.addEventListener('fetch', (event) => {
-  const requestUrl = new URL(event.request.url);
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        console.log('Retour depuis le cache pour :', event.request.url);
 
-  // Vérifier si la requête concerne un fichier CSS ou JavaScript
-  if (requestUrl.pathname.endsWith('.css') || requestUrl.pathname.endsWith('.js')) {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-cache' }) // Toujours récupérer les fichiers CSS et JS depuis le réseau
-        .then((networkResponse) => {
-          if (
-            networkResponse &&
-            networkResponse.status === 200 &&
-            networkResponse.type === 'basic'
-          ) {
-            // Si la réponse est valide, mettre à jour le cache
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, networkResponse.clone());
-              console.log('Mise à jour forcée du cache pour :', event.request.url);
-            });
-          }
-          return networkResponse; // Retourne la réponse réseau
-        })
-        .catch(() => {
-          console.log('Ressource non disponible hors ligne :', event.request.url);
-          return caches.match(event.request); // Retourne la version en cache si disponible
-        })
-    );
-  } else {
-    // Pour les autres ressources, utiliser la stratégie de cache habituelle
-    event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) {
-          console.log('Retour depuis le cache pour :', event.request.url);
-          return cachedResponse;
-        }
-        
-        return fetch(event.request, { cache: 'no-cache' })
+        // Mettre à jour le cache en arrière-plan
+        fetch(event.request)
           .then((networkResponse) => {
             if (
               networkResponse &&
@@ -70,16 +42,40 @@ self.addEventListener('fetch', (event) => {
             ) {
               caches.open(CACHE_NAME).then((cache) => {
                 cache.put(event.request, networkResponse.clone());
-                console.log('Mise à jour forcée du cache pour :', event.request.url);
+                console.log('Mise à jour du cache pour :', event.request.url);
               });
             }
-            return networkResponse;
           })
-          .catch(() => {
-            console.log('Ressource non disponible hors ligne :', event.request.url);
-            return new Response('', { status: 200 });
+          .catch((error) => {
+            console.warn('Échec de la mise à jour réseau :', error);
           });
-      })
-    );
-  }
+
+        return cachedResponse; // Retourne la version en cache
+      }
+
+      // Si la ressource n'est pas dans le cache, essaye le réseau
+      return fetch(event.request)
+        .then((networkResponse) => {
+          if (
+            !networkResponse ||
+            networkResponse.status !== 200 ||
+            networkResponse.type !== 'basic'
+          ) {
+            return networkResponse;
+          }
+
+          // Ajouter la ressource téléchargée au cache
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+            console.log('Ajout au cache de :', event.request.url);
+          });
+
+          return networkResponse; // Retourne la réponse réseau
+        })
+        .catch((error) => {
+          console.error('Erreur réseau, aucune ressource disponible pour :', event.request.url, error);
+        });
+    })
+  );
 });
