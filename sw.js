@@ -1,5 +1,5 @@
 // Nom du cache
-const CACHE_NAME = 'dynamic-cache-v5';
+const CACHE_NAME = 'dynamic-cache-v7';
 
 // Installation du Service Worker
 self.addEventListener('install', (event) => {
