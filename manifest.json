@@ -7,5 +7,10 @@
   "theme_color": "#000000",
   "description": "Portail pour BSO",
   "icons": [
+    {
+    "src": "/icons/icon-192x192.png",
+    "type": "image/png",
+    "sizes": "192x192"
+  }
   ]
 }
