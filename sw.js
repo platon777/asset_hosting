@@ -1,5 +1,5 @@
 // Nom du cache dynamique (changer le numéro pour forcer une mise à jour globale)
-const CACHE_NAME = 'dynamic-cache-v7';
+const CACHE_NAME = 'dynamic-cache-v8';
 
 // Installation du Service Worker
 self.addEventListener('install', (event) => {
@@ -27,30 +27,59 @@ self.addEventListener('activate', (event) => {
 
 // Gestion des requêtes réseau avec vérification explicite
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    fetch(event.request, { cache: 'no-cache' }) // Toujours essayer de récupérer la ressource depuis le réseau sans utiliser le cache du navigateur
-      .then((networkResponse) => {
-        if (
-          networkResponse &&
-          networkResponse.status === 200 &&
-          networkResponse.type === 'basic'
-        ) {
-          // Si la réponse est valide, mettre à jour le cache
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, networkResponse.clone());
-            console.log('Mise à jour forcée du cache pour :', event.request.url);
-          });
-        }
-        return networkResponse; // Retourne toujours la réponse réseau
-      })
-      .catch(() => {
-        // Si le réseau est indisponible, retourner la ressource en cache
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            console.log('Retour depuis le cache pour :', event.request.url);
-            return cachedResponse;
+  const requestUrl = new URL(event.request.url);
+
+  // Vérifier si la requête concerne un fichier CSS ou JavaScript
+  if (requestUrl.pathname.endsWith('.css') || requestUrl.pathname.endsWith('.js')) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-cache' }) // Toujours récupérer les fichiers CSS et JS depuis le réseau
+        .then((networkResponse) => {
+          if (
+            networkResponse &&
+            networkResponse.status === 200 &&
+            networkResponse.type === 'basic'
+          ) {
+            // Si la réponse est valide, mettre à jour le cache
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, networkResponse.clone());
+              console.log('Mise à jour forcée du cache pour :', event.request.url);
+            });
           }
-        });
+          return networkResponse; // Retourne la réponse réseau
+        })
+        .catch(() => {
+          console.log('Ressource non disponible hors ligne :', event.request.url);
+          return caches.match(event.request); // Retourne la version en cache si disponible
+        })
+    );
+  } else {
+    // Pour les autres ressources, utiliser la stratégie de cache habituelle
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          console.log('Retour depuis le cache pour :', event.request.url);
+          return cachedResponse;
+        }
+        
+        return fetch(event.request, { cache: 'no-cache' })
+          .then((networkResponse) => {
+            if (
+              networkResponse &&
+              networkResponse.status === 200 &&
+              networkResponse.type === 'basic'
+            ) {
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, networkResponse.clone());
+                console.log('Mise à jour forcée du cache pour :', event.request.url);
+              });
+            }
+            return networkResponse;
+          })
+          .catch(() => {
+            console.log('Ressource non disponible hors ligne :', event.request.url);
+            return new Response('', { status: 200 });
+          });
       })
-  );
+    );
+  }
 });
